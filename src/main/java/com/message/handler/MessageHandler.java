@@ -10,23 +10,20 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.message.dto.Message;
-import com.message.entity.MessageEntity;
-import com.message.repository.MessageRepository;
+import com.message.service.MessageService;
 import com.message.session.WebSocketSessionManager;
 
 @Component
 public class MessageHandler extends TextWebSocketHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(MessageHandler.class);
-	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final WebSocketSessionManager webSocketSessionManager;
-	private final MessageRepository messageRepository;
+	private final MessageService messageService;
 
-	public MessageHandler(WebSocketSessionManager webSocketSessionManager, MessageRepository messageRepository) {
+	public MessageHandler(WebSocketSessionManager webSocketSessionManager, MessageService messageService) {
 		this.webSocketSessionManager = webSocketSessionManager;
-		this.messageRepository = messageRepository;
+		this.messageService = messageService;
 	}
 
 	@Override
@@ -73,37 +70,27 @@ public class MessageHandler extends TextWebSocketHandler {
 		String payload = message.getPayload();
 
 		if (payload.equals("/last")) {
-			messageRepository.findTopByOrderByMessageSequenceDesc()
-				.ifPresent(messageEntity ->
-					sendMessage(senderSession, new Message(messageEntity.getUsername(), messageEntity.getContent())));
-			return;
-		}
+			messageService.getLastMessage()
+				.ifPresent(msg -> messageService.sendMessage(senderSession, msg));
+		} else if (payload.contains("/get")) {
+			String[] split = payload.split(" ");
 
-		try {
-			Message receivedMessage = objectMapper.readValue(payload, Message.class);
-
-			// 데이터베이스 저장
-			messageRepository.save(new MessageEntity(receivedMessage.username(), receivedMessage.content()));
-
-			webSocketSessionManager.getSessions().forEach(participantSession -> {
-				if (!senderSession.getId().equals(participantSession.getId())) {
-					sendMessage(participantSession, receivedMessage);
+			if (split.length > 1) { // ex: /get {number}
+				try {
+					messageService.getMessage(Long.valueOf(split[1]))
+						.ifPresent(msg -> messageService.sendMessage(senderSession, msg));
+				} catch (Exception e) {
+					String errorMessage = "Invalid protocol";
+					log.error("Get request failed. cause: {}", e.getMessage());
+					messageService.sendMessage(senderSession, new Message("system", errorMessage));
 				}
-			});
-		} catch (Exception e) {
-			String errorMessage = "유효한 프로토콜이 아닙니다.";
-			log.error("errorMessage payload: {} from {}", payload, senderSession.getId());
-			sendMessage(senderSession, new Message("system", errorMessage));
-		}
-	}
-
-	private void sendMessage(WebSocketSession session, Message message) {
-		try {
-			String msg = objectMapper.writeValueAsString(message);
-			session.sendMessage(new TextMessage(msg));
-			log.info("send message: {} to {}", msg, session.getId());
-		} catch (Exception e) {
-			log.error("메시지 전송 실패 to {} error: {}", session.getId(), e.getMessage());
+			}
+		} else {
+			try {
+				messageService.sendMessageToAll(senderSession, payload);
+			} catch (Exception e) {
+				log.error("Failed to send message to {} error: {}", senderSession.getId(), e.getMessage());
+			}
 		}
 	}
 }

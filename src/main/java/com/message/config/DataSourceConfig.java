@@ -15,12 +15,15 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.Ordered;
 import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 import com.message.database.RoutingDataSource;
 import com.zaxxer.hikari.HikariDataSource;
 
 @Configuration
+@EnableTransactionManagement(order = Ordered.LOWEST_PRECEDENCE - 1)
 public class DataSourceConfig {
 
 	private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
