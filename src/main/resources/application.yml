@@ -41,6 +41,3 @@ spring:
       port: 16379
       repositories:
         enabled: false
-#logging:
-#  level:
-#    com.zaxxer.hikari: debug
